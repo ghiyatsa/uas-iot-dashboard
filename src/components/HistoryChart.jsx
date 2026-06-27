@@ -11,6 +11,7 @@ const METRICS = [
   { key: 'humidity',    label: 'Kelembapan', unit: '%',   color: '#60a5fa', histKey: 'humidity'    },
   { key: 'pressure',   label: 'Tekanan',    unit: 'hPa', color: '#a78bfa', histKey: 'pressure'    },
   { key: 'gas',        label: 'Gas ADC',    unit: '',    color: '#34d399', histKey: 'gas'         },
+  { key: 'danger_log', label: 'Danger Log', unit: '',    color: '#ef4444', histKey: 'danger'      },
 ];
 
 // Custom tooltip component
@@ -36,35 +37,36 @@ function CustomTooltip({ active, payload, label, unit }) {
   );
 }
 
-export default function HistoryChart({ history, active, setActive }) {
+export default function HistoryChart({ history, active, setActive, dangerLogs = [], clearDangerLogs }) {
   const metric = METRICS.find(m => m.key === active);
 
   // Build recharts-compatible data array from parallel arrays
   const chartData = useMemo(() => {
+    if (active === 'danger_log') return [];
     return history.labels.map((label, i) => ({
       label,
       value: history[metric.histKey]?.[i] ?? null,
     }));
-  }, [history, metric]);
+  }, [history, metric, active]);
 
-  const hasData = chartData.length > 0;
+  const hasData = active === 'danger_log' ? true : chartData.length > 0;
 
   // Compute Y-axis domain with some padding
   const domain = useMemo(() => {
-    if (!hasData) return ['auto', 'auto'];
+    if (active === 'danger_log' || !hasData) return ['auto', 'auto'];
     const vals = chartData.map(d => d.value).filter(v => v != null);
     if (!vals.length) return ['auto', 'auto'];
     const min = Math.min(...vals);
     const max = Math.max(...vals);
     const pad = Math.max((max - min) * 0.15, 1);
     return [Math.floor(min - pad), Math.ceil(max + pad)];
-  }, [chartData, hasData]);
+  }, [chartData, hasData, active]);
 
   return (
     <div className="chart-panel">
       <div className="chart-header">
         <div className="chart-title">
-          <ActivityIcon /> Riwayat Sensor (60 data terakhir)
+          <ActivityIcon /> {active === 'danger_log' ? 'Riwayat Bahaya / Danger Log' : 'Riwayat Sensor (60 data terakhir)'}
         </div>
         <div className="chart-tabs">
           {METRICS.map(m => (
@@ -79,7 +81,57 @@ export default function HistoryChart({ history, active, setActive }) {
         </div>
       </div>
 
-      {!hasData ? (
+      {active === 'danger_log' ? (
+        <div style={{ maxHeight: '240px', overflowY: 'auto', fontFamily: 'var(--mono)', fontSize: '0.8rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+            <span style={{ color: 'var(--ink-dim)' }}>Menampilkan maks. 50 riwayat bahaya terakhir</span>
+            {dangerLogs.length > 0 && (
+              <button 
+                onClick={clearDangerLogs}
+                style={{ 
+                  background: 'none', 
+                  border: '1px solid var(--border)', 
+                  color: 'var(--danger)', 
+                  padding: '2px 8px', 
+                  cursor: 'pointer' 
+                }}
+              >
+                Clear Logs
+              </button>
+            )}
+          </div>
+          {dangerLogs.length === 0 ? (
+            <div className="chart-empty">
+              <span>Tidak ada riwayat bahaya tercatat.</span>
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border-2)', color: 'var(--ink-dim)' }}>
+                  <th style={{ padding: '8px' }}>Tanggal</th>
+                  <th style={{ padding: '8px' }}>Waktu</th>
+                  <th style={{ padding: '8px' }}>Pemicu Bahaya</th>
+                  <th style={{ padding: '8px' }}>Gas ADC</th>
+                  <th style={{ padding: '8px' }}>Suhu</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dangerLogs.map(log => (
+                  <tr key={log.id} style={{ borderBottom: '1px solid var(--border)', color: 'var(--ink)' }}>
+                    <td style={{ padding: '8px' }}>{log.date}</td>
+                    <td style={{ padding: '8px' }}>{log.time}</td>
+                    <td style={{ padding: '8px', color: 'var(--danger)', fontWeight: 600 }}>
+                      {log.gas && log.flame ? 'GAS & API DETECTED' : log.gas ? 'GAS DETECTED' : log.flame ? 'FIRE DETECTED' : 'UNKNOWN'}
+                    </td>
+                    <td style={{ padding: '8px' }}>{log.gasVal}</td>
+                    <td style={{ padding: '8px' }}>{log.temp?.toFixed(1)}°C</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ) : !hasData ? (
         <div className="chart-empty">
           <span className="chart-empty-icon"><RadioIcon /></span>
           <span>Menunggu data dari device...</span>
@@ -143,4 +195,6 @@ HistoryChart.propTypes = {
   }).isRequired,
   active:    PropTypes.string.isRequired,
   setActive: PropTypes.func.isRequired,
+  dangerLogs: PropTypes.array,
+  clearDangerLogs: PropTypes.func,
 };

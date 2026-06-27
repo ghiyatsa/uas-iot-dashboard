@@ -44,7 +44,7 @@ const SENSORS = [
 ];
 
 export default function App() {
-  const { connected, deviceOnline, sensorData, alert, history } = useMQTT();
+  const { connected, deviceOnline, sensorData, alert, history, dangerLogs, clearDangerLogs } = useMQTT();
   const overall = sensorData?.overall_status ?? "NORMAL";
   const [activeMetric, setActiveMetric] = useState("temperature");
 
@@ -85,6 +85,8 @@ export default function App() {
           history={history}
           active={activeMetric}
           setActive={setActiveMetric}
+          dangerLogs={dangerLogs}
+          clearDangerLogs={clearDangerLogs}
         />
 
         <div className="hatched-divider" />

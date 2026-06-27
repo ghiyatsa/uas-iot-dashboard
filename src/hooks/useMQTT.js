@@ -24,12 +24,14 @@ function normalize(raw) {
     pressure:        raw.p  ?? raw.pressure,
     gas_adc:         raw.g  ?? raw.gas_adc,
     gas_digital:     raw.gd ?? raw.gas_digital,
+    flame_detected:  raw.fd ?? raw.flame_detected ?? false,
     temp_status:     raw.ts ?? raw.temp_status     ?? 'NORMAL',
     humidity_status: raw.hs ?? raw.humidity_status ?? 'NORMAL',
     pressure_status: raw.ps ?? raw.pressure_status ?? 'NORMAL',
     gas_status:      raw.gs ?? raw.gas_status      ?? 'NORMAL',
+    flame_status:    raw.fs ?? raw.flame_status    ?? 'NORMAL',
     overall_status:  raw.os ?? raw.overall_status  ?? 'NORMAL',
-    timestamp:       raw.ms ?? raw.timestamp       ?? Date.now(),
+    timestamp:       Date.now(),
   };
 }
 
@@ -41,10 +43,22 @@ export function useMQTT() {
   const [history,      setHistory]      = useState({
     labels: [], temperature: [], humidity: [], pressure: [], gas: [],
   });
+  const [dangerLogs,   setDangerLogs]   = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('danger_logs') || '[]');
+    } catch {
+      return [];
+    }
+  });
 
   const clientRef      = useRef(null);
   const heartbeatTimer = useRef(null);
   const alertTimer     = useRef(null);
+
+  const clearDangerLogs = useCallback(() => {
+    localStorage.removeItem('danger_logs');
+    setDangerLogs([]);
+  }, []);
 
   const markHeartbeat = useCallback(() => {
     setDeviceOnline(true);
@@ -134,6 +148,38 @@ export function useMQTT() {
         const d = normalize(raw);
         setSensorData(d);
 
+        // Jika status overall adalah DANGER, simpan log kejadian
+        if (d.overall_status === 'DANGER') {
+          setDangerLogs(prev => {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+            const dateStr = now.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+            
+            // Cegah spam log berturut-turut jika log terakhir memiliki tipe bahaya yang sama dalam 5 detik terakhir
+            if (prev.length > 0) {
+              const lastLog = prev[0];
+              const diff = Date.now() - new Date(lastLog.rawTimestamp).getTime();
+              if (diff < 5000 && lastLog.gas === d.gas_digital && lastLog.flame === d.flame_detected) {
+                return prev;
+              }
+            }
+
+            const newLog = {
+              id: Math.random().toString(36).slice(2, 9),
+              time: timeStr,
+              date: dateStr,
+              rawTimestamp: Date.now(),
+              gas: d.gas_digital,
+              flame: d.flame_detected,
+              temp: d.temperature,
+              gasVal: d.gas_adc,
+            };
+            const updated = [newLog, ...prev].slice(0, 50); // Simpan max 50 logs (terbaru di atas)
+            localStorage.setItem('danger_logs', JSON.stringify(updated));
+            return updated;
+          });
+        }
+
         const label = new Date().toLocaleTimeString(undefined, {
           hour: '2-digit', minute: '2-digit', second: '2-digit',
           hour12: false
@@ -174,6 +220,6 @@ export function useMQTT() {
     };
   }, [markHeartbeat]);
 
-  return { connected, deviceOnline, sensorData, alert, history };
+  return { connected, deviceOnline, sensorData, alert, history, dangerLogs, clearDangerLogs };
 }
 

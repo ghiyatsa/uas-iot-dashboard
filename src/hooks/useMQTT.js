@@ -134,8 +134,9 @@ export function useMQTT() {
         const d = normalize(raw);
         setSensorData(d);
 
-        const label = new Date().toLocaleTimeString('id-ID', {
+        const label = new Date().toLocaleTimeString(undefined, {
           hour: '2-digit', minute: '2-digit', second: '2-digit',
+          hour12: false
         });
         setHistory(prev => {
           const push = (arr, val) => [...arr.slice(-(MAX_POINTS - 1)), val];

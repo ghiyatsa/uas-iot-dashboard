@@ -8,7 +8,7 @@ export default function Header({
   lastData,
 }) {
   const lastUpdate = lastData
-    ? new Date(lastData.timestamp).toLocaleTimeString("id-ID")
+    ? new Date(lastData.timestamp).toLocaleTimeString(undefined, { hour12: false })
     : null;
 
   return (

@@ -3,7 +3,6 @@ import { useMQTT } from "./hooks/useMQTT";
 import Header from "./components/Header";
 import SensorCard from "./components/SensorCard";
 import HistoryChart from "./components/HistoryChart";
-import AlertBanner from "./components/AlertBanner";
 import {
   ThermometerIcon,
   DropletIcon,
@@ -60,14 +59,6 @@ export default function App() {
         />
 
         <div className="hatched-divider" />
-
-        {/* Alert banner — hanya muncul saat ada pesan DANGER dari topic alert */}
-        {alert && (
-          <>
-            <AlertBanner alert={alert} />
-            <div className="hatched-divider" />
-          </>
-        )}
 
         {/* 4 Sensor cards */}
         <div className="sensor-grid">

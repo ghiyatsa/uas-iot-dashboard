@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="IoT Room Safety Dashboard — Pemantauan Suhu, Kelembapan, Tekanan, dan Gas secara real-time via MQTT">
+  <title>Room Safety Dashboard</title>
+  <link rel="stylesheet" href="/style.css">
+  <!-- Load Chart.js and MQTT.js from CDN for maximum performance and zero build step -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js" defer></script>
+  <script type="module" src="/app.js" defer></script>
+</head>
+<body>
+  <div id="app-container" class="app">
+    <div class="wrap">
+      
+      <!-- HEADER -->
+      <header class="header">
+        <div class="header-left">
+          <h1>
+            <!-- Shield Alert Icon -->
+            <svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            Room Safety Monitor
+          </h1>
+          <div class="sub">IoT-Based Room Safety & Environment Dashboard</div>
+        </div>
+        <div class="header-right">
+          <!-- Connection Status Pill -->
+          <div class="pill">
+            <span id="mqtt-dot" class="dot offline"></span>
+            Broker: <span id="mqtt-status">OFFLINE</span>
+          </div>
+          <!-- Device Heartbeat Pill -->
+          <div class="pill">
+            <span id="device-dot" class="dot offline"></span>
+            Device: <span id="device-status">OFFLINE</span>
+          </div>
+          <!-- Overall Danger Badge -->
+          <div id="overall-badge" class="overall-badge NORMAL">NORMAL</div>
+          <!-- Last Update Pill -->
+          <div id="last-update" class="last-update">No Data Received</div>
+        </div>
+      </header>
+
+      <div class="hatched-divider"></div>
+
+      <!-- DANGER POPUP MODAL (hidden by default via CSS class) -->
+      <div id="alert-modal" class="alert-modal" aria-live="assertive" aria-atomic="true">
+        <div class="alert-modal-inner">
+          <div class="alert-modal-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </div>
+          <div class="alert-modal-body">
+            <div class="alert-modal-title">⚠ Kondisi Bahaya Terdeteksi!</div>
+            <div id="alert-message" class="alert-modal-message">Menunggu data...</div>
+          </div>
+          <button id="alert-dismiss" class="alert-dismiss" aria-label="Tutup alert">✕</button>
+        </div>
+      </div>
+
+      <!-- SENSOR CARDS GRID -->
+      <div class="sensor-grid">
+        <!-- Temperature Card -->
+        <div id="card-temperature" class="card NORMAL" data-metric="temperature">
+          <div class="card-icon" style="color: var(--danger);">
+            <svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+            </svg>
+          </div>
+          <div class="card-label">Suhu</div>
+          <div class="card-value"><span id="val-temperature">--</span><span class="card-unit">°C</span></div>
+          <div id="badge-temperature" class="card-badge NORMAL">NORMAL</div>
+        </div>
+
+        <!-- Humidity Card -->
+        <div id="card-humidity" class="card NORMAL" data-metric="humidity">
+          <div class="card-icon" style="color: var(--blue);">
+            <svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>
+            </svg>
+          </div>
+          <div class="card-label">Kelembapan</div>
+          <div class="card-value"><span id="val-humidity">--</span><span class="card-unit">%</span></div>
+          <div id="badge-humidity" class="card-badge NORMAL">NORMAL</div>
+        </div>
+
+        <!-- Pressure Card -->
+        <div id="card-pressure" class="card NORMAL" data-metric="pressure">
+          <div class="card-icon" style="color: #a78bfa;">
+            <svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
+          <div class="card-label">Tekanan</div>
+          <div class="card-value"><span id="val-pressure">--</span><span class="card-unit">hPa</span></div>
+          <div id="badge-pressure" class="card-badge NORMAL">NORMAL</div>
+        </div>
+
+        <!-- Gas Card -->
+        <div id="card-gas" class="card NORMAL" data-metric="gas">
+          <div class="card-icon" style="color: var(--normal);">
+            <svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+            </svg>
+          </div>
+          <div class="card-label">Gas (ADC)</div>
+          <div class="card-value"><span id="val-gas">--</span><span class="card-unit"></span></div>
+          <div id="badge-gas" class="card-badge NORMAL">NORMAL</div>
+        </div>
+      </div>
+
+      <div class="hatched-divider"></div>
+
+      <!-- CHART PANEL -->
+      <div class="chart-panel">
+        <div class="chart-header">
+          <div class="chart-title">
+            <svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+            Riwayat Sensor (60 data terakhir)
+          </div>
+          <div class="chart-tabs">
+            <button id="tab-temperature" class="chart-tab active" data-metric="temperature">Suhu</button>
+            <button id="tab-humidity" class="chart-tab" data-metric="humidity">Kelembapan</button>
+            <button id="tab-pressure" class="chart-tab" data-metric="pressure">Tekanan</button>
+            <button id="tab-gas" class="chart-tab" data-metric="gas">Gas</button>
+          </div>
+        </div>
+
+        <div class="chart-wrap">
+          <canvas id="historyChart"></canvas>
+        </div>
+      </div>
+
+      <div class="hatched-divider"></div>
+
+      <!-- FOOTER -->
+      <footer class="footer">
+        Kelompok 2 &middot; Made with ♥ &middot; 2026
+      </footer>
+
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,22 @@
+# Credentials firmware — JANGAN di-commit!
+# Salin room_safety_dashboard/config_secret.h.example → config_secret.h
+**/config_secret.h
+
+# Dashboard env vars
+dashboard/.env
+dashboard/.env.local
+dashboard/.env.*.local
+
+# Build artifacts
+dashboard/node_modules/
+dashboard/dist/
+dashboard/dist-ssr/
+
+# OS & editor
+.DS_Store
+Thumbs.db
+*.suo
+*.sw?
+.idea/
+.vscode/*
+!.vscode/extensions.json

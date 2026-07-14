@@ -51,6 +51,10 @@ void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
 
   Serial.begin(115200);
+
+  // Naikkan WDT timeout ke 15 detik untuk mengakomodasi TLS handshake WiFiClientSecure
+  // yang bisa blocking CPU 0 hingga 5-10 detik tanpa yield, menyebabkan IDLE0 starved.
+  esp_task_wdt_init(15, true);
   Serial.println("\n==================================================");
   Serial.println("  IoT Room Safety & Environment Dashboard (OPTIMIZED)");
   Serial.println("==================================================");

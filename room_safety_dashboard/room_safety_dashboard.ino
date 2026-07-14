@@ -257,8 +257,7 @@ void connectWiFi(bool showLCD, bool showBlueLED) {
 
   unsigned long startAttempt = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 10000) {
-    vTaskDelay(pdMS_TO_TICKS(300)); // beri kesempatan IDLE0
-    esp_task_wdt_reset();           // feed WDT selama polling
+    vTaskDelay(pdMS_TO_TICKS(300)); // yield ke IDLE0
     Serial.print(".");
   }
 
@@ -301,9 +300,6 @@ void connectMQTT(bool showLCD, bool showBlueLED) {
   mac.replace(":", "");
   String clientId = "esp32-safety-" + mac.substring(mac.length() - 6);
 
-  // Feed WDT sebelum TLS handshake (bisa makan >3 detik → starve IDLE0)
-  esp_task_wdt_reset();
-
   if (mqttClient.connect(clientId.c_str(), MQTT_USERNAME, MQTT_PASSWORD)) {
     Serial.println("TERHUBUNG!");
     mqttClient.subscribe("iot/room-safety/cmd/#");
@@ -318,8 +314,6 @@ void connectMQTT(bool showLCD, bool showBlueLED) {
       delay(1000);
     }
   }
-
-  esp_task_wdt_reset(); // Feed lagi setelah selesai
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {

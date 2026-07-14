@@ -54,7 +54,8 @@ void setup() {
 
   // Naikkan WDT timeout ke 15 detik untuk mengakomodasi TLS handshake WiFiClientSecure
   // yang bisa blocking CPU 0 hingga 5-10 detik tanpa yield, menyebabkan IDLE0 starved.
-  esp_task_wdt_init(15, true);
+  const esp_task_wdt_config_t wdt_cfg = { .timeout_ms = 15000, .idle_core_mask = 0, .trigger_panic = true };
+  esp_task_wdt_reconfigure(&wdt_cfg);
   Serial.println("\n==================================================");
   Serial.println("  IoT Room Safety & Environment Dashboard (OPTIMIZED)");
   Serial.println("==================================================");

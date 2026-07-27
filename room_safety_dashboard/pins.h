@@ -10,22 +10,22 @@
 // GND              --> HITAM (Black)
 
 // ====================== I2C BUS ======================
-#define PIN_SDA       21   // HIJAU (Green) - SDA
-#define PIN_SCL       22   // KUNING (Yellow) - SCL
+constexpr uint8_t PIN_SDA      = 21;  // HIJAU (Green) - SDA
+constexpr uint8_t PIN_SCL      = 22;  // KUNING (Yellow) - SCL
 
 // ====================== ANALOG SENSORS ======================
-#define PIN_MQ2_AO    32   // UNGU (Purple) - Gas MQ-2
-#define PIN_FLAME_AO  33   // PUTIH (White) - Flame Sensor
+constexpr uint8_t PIN_MQ2_AO   = 32;  // UNGU (Purple) - Gas MQ-2
+constexpr uint8_t PIN_FLAME_AO = 33;  // PUTIH (White) - Flame Sensor
 
 // ====================== ACTUATORS ======================
-#define PIN_BUZZER    23   // COKELAT (Brown) - Buzzer Active
-#define PIN_LED_R     25   // ORANYE (Orange) - Red PWM
-#define PIN_LED_G     26   // ABU-ABU (Grey) - Green PWM
-#define PIN_LED_B     27   // BIRU (Blue) - Blue PWM
+constexpr uint8_t PIN_BUZZER   = 23;  // COKELAT (Brown) - Buzzer Active
+constexpr uint8_t PIN_LED_R    = 25;  // ORANYE (Orange) - Red PWM
+constexpr uint8_t PIN_LED_G    = 26;  // ABU-ABU (Grey) - Green PWM
+constexpr uint8_t PIN_LED_B    = 27;  // BIRU (Blue) - Blue PWM
 
 // ====================== I2C ADDRESSES ======================
-#define I2C_ADDR_AHT20   0x38
-#define I2C_ADDR_BMP280  0x77
-#define I2C_ADDR_LCD     0x27
+constexpr uint8_t I2C_ADDR_AHT20  = 0x38;
+constexpr uint8_t I2C_ADDR_BMP280 = 0x77;
+constexpr uint8_t I2C_ADDR_LCD    = 0x27;
 
 #endif

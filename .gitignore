@@ -2,13 +2,16 @@
 # Salin room_safety_dashboard/config_secret.h.example → config_secret.h
 **/config_secret.h
 
-# Dashboard env vars
+# Env vars
+.env
 dashboard/.env
 dashboard/.env.local
 dashboard/.env.*.local
 
 # Build artifacts
+node_modules/
 dashboard/node_modules/
+dist/
 dashboard/dist/
 dashboard/dist-ssr/
 

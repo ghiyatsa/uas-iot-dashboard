@@ -26,6 +26,8 @@ struct SystemState {
   Status gasStatus     = NORMAL;
   Status flameStatus   = NORMAL;
   Status overallStatus = NORMAL;
+  bool   sensorError   = false;  // true jika AHT20/BMP280 gagal baca berturut-turut
+  bool   buzzerMuted   = false;  // true jika di-mute via MQTT cmd
 };
 
 #endif  // TYPES_H

@@ -1,128 +1,197 @@
-# IoT Room Safety & Environment Dashboard — Kode Lengkap
+# IoT Room Safety & Environment Dashboard
 
-Sesuai PRD v1.1. Berisi dua bagian: firmware ESP32 dan dashboard web.
+Sistem monitoring keamanan ruangan terintegrasi berbasis **ESP32** (Firmware) dan **Vite + React** (Web Dashboard) menggunakan protokol komunikasi **MQTT (HiveMQ Cloud)** dan notifikasi **Telegram Bot**.
 
-## 📁 Struktur File
+---
+
+## 📁 Struktur Proyek
 
 ```
-firmware/
-  config.h                  → kredensial WiFi, MQTT, Telegram, threshold sensor
-  pins.h                     → pin mapping (sesuai PRD §6.2-6.3)
-  room_safety_dashboard.ino  → firmware utama
-  i2c_scanner.ino            → sketch bantu untuk cek alamat I2C (jalankan dulu!)
-
-dashboard/
-  index.html                 → dashboard web (siap deploy ke PaaS apa saja)
+UAS_IoT/
+├── room_safety_dashboard/      # FIRMWARE ESP32
+│   ├── room_safety_dashboard.ino # Sketch utama & FreeRTOS Dual-Core Loop
+│   ├── Sensors.h               # SensorsManager (I2C Polling, Warmup, Health Check)
+│   ├── Actuators.h             # ActuatorsManager (LCD, LED RGB, Buzzer alarm)
+│   ├── mqtt_pub.ino            # Serialisasi JSON (ArduinoJson) & MQTT Publishers
+│   ├── telegram.ino            # Polling & Telegram Alert Notification
+│   ├── ota.ino                 # Update firmware Over-the-Air (ArduinoOTA)
+│   ├── config.h                # Threshold sensor & Timing system
+│   ├── config_secret.h         # [RAHASIA] Kredensial WiFi, MQTT, Telegram
+│   ├── pins.h                  # Pinout mapping & konvensi warna kabel
+│   └── types.h                 # Struktur data & Enum status
+│
+├── src/                        # FRONTEND WEB DASHBOARD (React + Vite)
+│   ├── components/
+│   │   ├── Header.jsx          # Header, status koneksi & badge sensor error
+│   │   ├── SensorCard.jsx      # Card sensor modular dengan status color-coding
+│   │   ├── HistoryChart.jsx    # Chart Recharts (Tabbed & Export CSV)
+│   │   ├── ControlPanel.jsx    # Kontrol jarak jauh (Mute Buzzer, Test LED, TG)
+│   │   └── Icons.jsx           # Clean SVG Icons pack (tanpa emoji unicode)
+│   ├── hooks/
+│   │   └── useMQTT.js          # Custom React Hook: MQTT.js Client (WSS) & Logic state
+│   ├── App.jsx                 # Entry point frontend & layout grid
+│   ├── App.css                 # Custom Styling System (Responsive & Glassmorphism)
+│   └── index.css               # Design Tokens & global reset
+│
+├── public/                     # ASSET STATIC & PWA
+│   ├── manifest.json           # Manifest PWA (App installable di Mobile/Desktop)
+│   └── sw.js                   # Service Worker (Cache shell untuk offline support)
+├── .env                        # [RAHASIA] Kredensial MQTT Broker untuk Frontend
+├── index.html                  # HTML Shell & SW Registration
+├── package.json                # Project dependencies & npm scripts
+└── vite.config.js              # Konfigurasi bundler Vite
 ```
 
-## 🔧 Setup Firmware
+---
 
-### 1. Install library (Arduino IDE → Library Manager)
-- Adafruit AHTX0
-- Adafruit BMP280 Library
-- Adafruit Unified Sensor
-- LiquidCrystal_I2C (Frank de Brabander)
-- PubSubClient (Nick O'Leary)
-- ArduinoJson (Benoit Blanchon)
+## 🏗️ Arsitektur Sistem & Multi-threading
 
-### 2. Install driver CH340
-https://www.wch-ic.com/downloads/CH341SER_EXE.html
+Untuk menjamin fungsi keselamatan tidak terganggu oleh latensi jaringan internet/TLS, firmware ESP32 memanfaatkan arsitektur **Dual-Core FreeRTOS**:
 
-### 3. Cek alamat I2C dulu
-Upload `i2c_scanner.ino`, buka Serial Monitor (115200 baud). Pastikan:
-- `0x38` terdeteksi (AHT20)
-- `0x76` terdeteksi (BMP280)
-- `0x27` atau `0x3F` terdeteksi (LCD)
+1. **Core 1 (Safety Loop / Main Loop)**:
+   - Polling sensor AHT20, BMP280, MQ-2, dan Flame secara berkala secara *non-blocking*.
+   - Mengendalikan LCD, LED RGB, dan Buzzer dengan pola alarm tertentu sesuai tingkat bahaya.
+   - Tetap berjalan normal walaupun koneksi internet terputus.
+2. **Core 0 (Network Task)**:
+   - Mengurusi koneksi WiFi, MQTT, polling Telegram Bot, dan update OTA secara asinkron.
+   - Sinkronisasi data dengan Core 1 secara aman menggunakan **Mutex** (`SemaphoreHandle_t`).
+   - Menggunakan **Dua Instance `WiFiClientSecure` Terpisah** (`secureClient` untuk MQTT & `telegramClient` untuk Telegram) guna mencegah tabrakan/pemutusan socket TLS.
 
-Jika LCD terdeteksi di `0x3F`, ubah `I2C_ADDR_LCD` di `pins.h`.
+---
 
-### 4. Isi kredensial di `config.h`
-- `WIFI_SSID` / `WIFI_PASSWORD`
-- `MQTT_HOST` → ambil dari HiveMQ Cloud Console (format: `xxxxx.s1.eu.hivemq.cloud`)
-- `MQTT_USERNAME` / `MQTT_PASSWORD` → buat di HiveMQ Console → Access Management
-- `TELEGRAM_BOT_TOKEN` → buat bot baru lewat **@BotFather** di Telegram, copy token-nya
-- `TELEGRAM_CHAT_ID` → kirim pesan apa saja ke bot, lalu cek
-  `https://api.telegram.org/bot<TOKEN>/getUpdates` untuk melihat `chat.id`
+## 🔧 Setup & Konfigurasi
 
-### 5. Wiring
-Ikuti tabel pin mapping & konvensi warna kabel di PRD §6. Pastikan:
-- AHT20+BMP280 pakai **3.3V**, jangan 5V
-- MQ-2, LCD, Buzzer pakai **VIN (5V)**
-- Tambahkan pull-up 4.7kΩ ke 3.3V di jalur SDA/SCL jika modul belum punya pull-up internal
+### A. Setup Firmware (ESP32)
 
-### 6. Upload firmware utama
-Upload `room_safety_dashboard.ino`. Tunggu 30 detik warm-up MQ-2 sebelum hasil gas dianggap valid.
+1. **Arduino IDE Board Manager**:
+   - Tambahkan URL berikut di File -> Preferences -> Additional Boards Manager URLs:
+     `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
+   - Buka Tools -> Board -> Boards Manager, cari `esp32` lalu install versi terbaru dari Espressif.
+   - Pilih tipe board Anda (contoh: `ESP32 Dev Module` atau `DOIT ESP32 DEVKIT V1`).
 
-## 🌐 Setup Dashboard
+2. **Arduino Libraries Required** (Install via Library Manager):
+   - **ArduinoJson** (versi 6 atau 7)
+   - **PubSubClient** (oleh Nick O'Leary)
+   - **UniversalTelegramBot** (oleh Brian Lenehan)
+   - **Adafruit AHTX0**
+   - **Adafruit BMP280 Library**
+   - **LiquidCrystal I2C** (oleh Frank de Brabander)
 
-### 1. Cari port WebSocket TLS di HiveMQ Cloud
-Masuk ke HiveMQ Cloud Console → cluster Anda → **Connection details**. Browser butuh port **WSS** (bukan port 8883 yang dipakai ESP32) — biasanya port **8884**, path `/mqtt`. Sesuaikan di `MQTT_CONFIG` pada `index.html`.
+3. **Konfigurasi Kredensial**:
+   - Salin file template:
+     `cp room_safety_dashboard/config_secret.h.example room_safety_dashboard/config_secret.h`
+   - Buka `room_safety_dashboard/config_secret.h` dan isi kredensial WiFi, broker HiveMQ, dan token Telegram Bot Anda.
 
-### 2. Edit kredensial
-Buka `dashboard/index.html`, cari blok `MQTT_CONFIG` di bagian `<script>`, isi:
-```js
-const MQTT_CONFIG = {
-  host: 'xxxxxxxx.s1.eu.hivemq.cloud',
-  port: 8884,
-  path: '/mqtt',
-  username: 'dashboard_user',
-  password: 'dashboard_password',
-  ...
-};
-```
+4. **Upload Firmware**:
+   - Sambungkan ESP32 via kabel USB, pilih port COM, lalu Upload.
+   - Setelah sukses upload, buzzer akan mengeluarkan bunyi **beep ganda** sebagai tanda WiFi berhasil tersambung, disusul **beep singkat** setelah MQTT terhubung.
 
-### 3. Deploy ke PaaS
-File `index.html` ini adalah static single-file app — bisa langsung di-deploy ke:
-- **Vercel** / **Netlify** (drag & drop folder `dashboard/`)
-- **GitHub Pages**
-- **Render** (static site)
+### 💡 Konfigurasi Nirkabel via Captive Portal (Alternatif)
+Jika ESP32 gagal terhubung ke router WiFi yang ditentukan saat booting, perangkat otomatis berpindah ke mode **Access Point (AP)** mandiri untuk dikonfigurasi lewat browser HP/Laptop:
+* **Nama Hotspot (SSID)**: `ESP32-Safety-Dashboard` (sesuai hostname)
+* **Password Hotspot**: `config123`
+* **Alamat IP Portal**: `192.168.4.1` (atau otomatis terbuka/redirect saat terhubung)
 
-Tidak perlu backend server karena koneksi MQTT dilakukan langsung dari browser ke HiveMQ Cloud via WebSocket.
+Di halaman portal ini, Anda dapat memindai jaringan WiFi terdekat, mengganti password WiFi, mengubah alamat broker MQTT, hingga memperbarui token Telegram secara wireless. Semua data disimpan secara permanen di memori flash NVS ESP32.
 
-⚠️ **Catatan keamanan**: karena kredensial MQTT ada di kode frontend (client-side), siapa pun yang membuka dashboard bisa melihatnya di DevTools. Untuk skala kelas/prototipe ini biasanya cukup, tapi untuk produksi sebaiknya:
-- Buat MQTT user **read-only** (hanya subscribe, tidak publish) khusus untuk dashboard
-- Atau buat backend proxy yang menyimpan kredensial di server
+---
 
-## 📡 Format Data MQTT
+### B. Setup Web Dashboard (Frontend)
 
-**Topic `iot/room-safety/data`** (setiap 5 detik):
+1. **Prasyarat**: Pastikan Anda sudah menginstall [Node.js](https://nodejs.org/).
+2. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
+3. **Konfigurasi Kredensial**:
+   - Buka file `.env` di direktori utama, isi sesuai kredensial HiveMQ Cloud Anda (menggunakan port **8884** untuk WebSocket Secure/WSS):
+     ```env
+     VITE_MQTT_HOST=xxxxxx.s1.eu.hivemq.cloud
+     VITE_MQTT_PORT=8884
+     VITE_MQTT_USER=username_broker
+     VITE_MQTT_PASS=password_broker
+     ```
+4. **Jalankan Development Server**:
+   ```bash
+   npm run dev
+   ```
+   Buka alamat URL lokal (biasanya `http://localhost:5173`) di browser Anda.
+5. **Production Build**:
+   ```bash
+   npm run build
+   ```
+
+---
+
+## 📡 Integrasi Topik MQTT
+
+Aplikasi berkomunikasi secara real-time melalui topik-topik MQTT berikut:
+
+### 1. Telemetri & Status (`iot/room-safety/data`)
+Dikirim oleh ESP32 setiap 1 detik. Contoh payload JSON:
 ```json
 {
-  "temperature": 28.5,
-  "humidity": 65.2,
-  "pressure": 1012.4,
-  "gas_adc": 320,
-  "gas_digital": false,
-  "temp_status": "NORMAL",
-  "humidity_status": "NORMAL",
-  "pressure_status": "NORMAL",
-  "gas_status": "NORMAL",
-  "overall_status": "NORMAL",
-  "timestamp": 123456
+  "t": 28.5,             // Suhu (°C)
+  "h": 60.2,             // Kelembapan (%RH)
+  "p": 1008.4,           // Tekanan (hPa)
+  "g": 666,              // Gas ADC (MQ-2)
+  "f": 4095,             // Flame ADC (Active-Low)
+  "ts": "NORMAL",        // Status Suhu (NORMAL/WARNING/DANGER)
+  "hs": "NORMAL",        // Status Kelembapan
+  "ps": "NORMAL",        // Status Tekanan
+  "gs": "NORMAL",        // Status Gas
+  "fs": "NORMAL",        // Status Flame
+  "os": "NORMAL",        // Status Overall
+  "se": false,           // Sensor I2C Error Flag (true jika sensor rusak/terputus)
+  "bm": false,           // Status Mute Buzzer
+  "ms": 123456,          // Uptime ESP32 (millis)
+  "ts_unix": 1782390481  // Unix Timestamp dari NTP
 }
 ```
 
-**Topic `iot/room-safety/alert`** (hanya saat DANGER):
+### 2. Notifikasi Bahaya (`iot/room-safety/alert`)
+Dikirim instan oleh ESP32 saat pertama kali kondisi masuk ke `DANGER` (cooldown 30s):
 ```json
 {
   "overall_status": "DANGER",
   "temperature": 28.5,
-  "humidity": 65.2,
-  "pressure": 1012.4,
-  "gas_adc": 2450,
+  "humidity": 60.2,
+  "pressure": 1008.4,
+  "gas_adc": 1850,
+  "flame_adc": 4095,
   "message": "Kondisi DANGER terdeteksi, periksa ruangan segera!",
-  "timestamp": 123456
+  "ts_unix": 1782390481
 }
 ```
 
-**Topic `iot/room-safety/heartbeat`** (setiap 15 detik, untuk status online/offline):
+### 3. Keberadaan Device (`iot/room-safety/heartbeat`)
+Dikirim oleh ESP32 setiap 15 detik untuk deteksi keaktifan (*Liveness/Keep-Alive*):
 ```json
-{ "status": "online", "uptime_ms": 123456 }
+{
+  "status": "online",
+  "uptime_ms": 123456,
+  "heap_free": 184512,    // Ukuran sisa RAM ESP32 (heap memory)
+  "ts_unix": 1782390481
+}
 ```
 
-## ✅ Checklist Sebelum Demo
-- [ ] I2C scanner sudah konfirmasi semua alamat
-- [ ] MQ-2 sudah warm-up minimal 30 detik sebelum tes gas
-- [ ] Kredensial HiveMQ sama di firmware (port 8883) & dashboard (port WSS, biasanya 8884)
-- [ ] Bot Telegram sudah dites kirim pesan manual dulu
-- [ ] Dashboard sudah dites bisa connect (cek console browser untuk error MQTT)
+### 4. Perintah Jarak Jauh (`iot/room-safety/cmd/#`)
+Dikirim oleh Web Dashboard untuk mengontrol ESP32:
+* `iot/room-safety/cmd/mute` : Mute alarm buzzer (`1` = Mute, `0` = Unmute).
+* `iot/room-safety/cmd/test_led` : Memulai sequence test RGB LED (`1` = Trigger).
+* `iot/room-safety/cmd/telegram` : Mengirim notifikasi status ruangan manual ke Telegram (`1` = Trigger).
+
+---
+
+## 💡 Fitur Unggulan & Karakteristik Suara Alarm
+
+* **Suara Alarm Cerdas**:
+  * **WiFi Connect**: Beep ganda sedang (2x 150ms).
+  * **WiFi Disconnect**: Beep tunggal panjang (1x 800ms).
+  * **MQTT Connect**: Beep tunggal pendek (1x 200ms).
+  * **MQTT Disconnect**: Beep tunggal sedang (1x 450ms).
+  * **Bahaya Kebocoran Gas saja**: Beep berulang lambat (tiap 800ms).
+  * **Bahaya Kebakaran saja**: Beep berulang cepat (tiap 200ms).
+  * **Bahaya Ganda (Gas & Kebakaran)**: Buzzer berbunyi terus-menerus tanpa jeda (*solid tone*).
+* **Sensor Health Check**: Jika terjadi pembacaan `NaN` sebanyak 5x berturut-turut pada bus I2C, sistem menyalakan badge warning `SENSOR ERR` di dashboard.
+* **PWA & Push Notification**: Dashboard web dapat diinstall langsung di ponsel/laptop sebagai aplikasi native, lengkap dengan support notifikasi desktop/mobile saat kondisi DANGER terdeteksi.

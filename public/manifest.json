@@ -1,0 +1,23 @@
+{
+  "name": "Room Safety Dashboard",
+  "short_name": "RoomSafety",
+  "description": "IoT Room Safety & Environment Monitoring Dashboard",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080e0a",
+  "theme_color": "#22c55e",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

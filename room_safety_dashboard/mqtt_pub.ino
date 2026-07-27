@@ -1,60 +1,85 @@
 /*
  * mqtt_pub.ino - High-performance MQTT publication module.
- * Eliminates ArduinoJson library overhead by using manual snprintf JSON formatting,
- * reducing CPU cycles and avoiding dynamic memory allocation.
+ * Menggunakan ArduinoJson. Payload mencakup flame sensor dan NTP timestamp.
  */
 
 #include <PubSubClient.h>
+#include <ArduinoJson.h>
+#include <time.h>
 #include "types.h"
 #include "config.h"
 
 extern PubSubClient mqttClient;
 String statusToString(Status s);
 
-// ====================== PUBLISH DATA (MANUAL FORMAT) ======================
+// Ambil Unix timestamp dari NTP (0 jika belum sync)
+static time_t getUnixTime() {
+  time_t now = 0;
+  struct tm ti;
+  if (getLocalTime(&ti, 10)) {
+    now = mktime(&ti);
+  }
+  return now;
+}
+
+// ====================== PUBLISH DATA ======================
 bool publishDataManual(const SensorReading& r, const SystemState& s) {
-  char buffer[256];
+  StaticJsonDocument<320> doc;
   
-  // Format JSON manual dengan keys pendek untuk menghemat bandwidth
-  snprintf(buffer, sizeof(buffer),
-           "{\"t\":%.1f,\"h\":%.1f,\"p\":%.1f,\"g\":%d,\"ts\":\"%s\",\"hs\":\"%s\",\"ps\":\"%s\",\"gs\":\"%s\",\"os\":\"%s\",\"ms\":%lu}",
-           isnan(r.temperature) ? 0.0f : r.temperature,
-           isnan(r.humidity) ? 0.0f : r.humidity,
-           isnan(r.pressure) ? 0.0f : r.pressure,
-           r.gasADC,
-           statusToString(s.tempStatus).c_str(),
-           statusToString(s.humStatus).c_str(),
-           statusToString(s.presStatus).c_str(),
-           statusToString(s.gasStatus).c_str(),
-           statusToString(s.overallStatus).c_str(),
-           millis());
+  doc["t"]  = isnan(r.temperature) ? 0.0f : r.temperature;
+  doc["h"]  = isnan(r.humidity)    ? 0.0f : r.humidity;
+  doc["p"]  = isnan(r.pressure)    ? 0.0f : r.pressure;
+  doc["g"]  = r.gasADC;
+  doc["f"]  = r.flameADC;                       // flame ADC (active-low)
+  doc["ts"] = statusToString(s.tempStatus);
+  doc["hs"] = statusToString(s.humStatus);
+  doc["ps"] = statusToString(s.presStatus);
+  doc["gs"] = statusToString(s.gasStatus);
+  doc["fs"] = statusToString(s.flameStatus);    // flame status
+  doc["os"] = statusToString(s.overallStatus);
+  doc["se"] = s.sensorError;                    // sensor error flag
+  doc["bm"] = s.buzzerMuted;                    // buzzer muted flag
+  doc["hf"] = (int)ESP.getFreeHeap();           // free heap size
+  doc["ms"] = millis();
+  doc["ts_unix"] = (long)getUnixTime();
+
+  char buffer[320];
+  serializeJson(doc, buffer);
 
   return mqttClient.publish(TOPIC_DATA, buffer);
 }
 
-// ====================== PUBLISH ALERT (MANUAL FORMAT) ======================
+// ====================== PUBLISH ALERT ======================
 bool publishAlertManual(const SensorReading& r, Status overall) {
-  char buffer[320];
+  StaticJsonDocument<384> doc;
   
-  snprintf(buffer, sizeof(buffer),
-           "{\"overall_status\":\"%s\",\"temperature\":%.1f,\"humidity\":%.1f,\"pressure\":%.1f,\"gas_adc\":%d,\"message\":\"Kondisi DANGER terdeteksi, periksa ruangan segera!\",\"timestamp\":%lu}",
-           statusToString(overall).c_str(),
-           isnan(r.temperature) ? 0.0f : r.temperature,
-           isnan(r.humidity) ? 0.0f : r.humidity,
-           isnan(r.pressure) ? 0.0f : r.pressure,
-           r.gasADC,
-           millis());
+  doc["overall_status"] = statusToString(overall);
+  doc["temperature"]    = isnan(r.temperature) ? 0.0f : r.temperature;
+  doc["humidity"]       = isnan(r.humidity)    ? 0.0f : r.humidity;
+  doc["pressure"]       = isnan(r.pressure)    ? 0.0f : r.pressure;
+  doc["gas_adc"]        = r.gasADC;
+  doc["flame_adc"]      = r.flameADC;
+  doc["message"]        = "Kondisi DANGER terdeteksi, periksa ruangan segera!";
+  doc["timestamp"]      = millis();
+  doc["ts_unix"]        = (long)getUnixTime();
+
+  char buffer[384];
+  serializeJson(doc, buffer);
 
   return mqttClient.publish(TOPIC_ALERT, buffer);
 }
 
-// ====================== PUBLISH HEARTBEAT (MANUAL FORMAT) ======================
+// ====================== PUBLISH HEARTBEAT ======================
 bool publishHeartbeatManual() {
-  char buffer[64];
+  StaticJsonDocument<128> doc;
   
-  snprintf(buffer, sizeof(buffer),
-           "{\"status\":\"online\",\"uptime_ms\":%lu}",
-           millis());
+  doc["status"]    = "online";
+  doc["uptime_ms"] = millis();
+  doc["heap_free"] = (int)ESP.getFreeHeap();
+  doc["ts_unix"]   = (long)getUnixTime();
 
-  return mqttClient.publish(TOPIC_HEARTBEAT, buffer);
+  char buffer[128];
+  serializeJson(doc, buffer);
+
+  return mqttClient.publish(TOPIC_HEARTBEAT, buffer, true); // Set retain = true agar broker menyimpan status online ter-update
 }
